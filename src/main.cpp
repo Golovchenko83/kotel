@@ -27,7 +27,7 @@ const char *ssid = "Beeline";              // Имя точки доступа W
 const char *password = "sl908908908908sl"; // пароль точки доступа WIFI
 const char *mqtt_server = "192.168.1.221";
 String s;
-byte buff_clear, state_GAZ = 0, state_DUCH = 0, start = 0;
+byte buff_clear, state_GAZ = 0, state_DUCH = 0, start = 0, step_up = 0;
 int data = 0, dht_tik = 0, data_rezistor = 0;
 int Dima_t = 0, zal_t = 0, temper_ul = 0, Dima_t_tik = 0, zal_t_tik = 0;
 int podacha, obratka, set_rez_raw = 0, podacha_kontrol;
@@ -50,6 +50,15 @@ void publish_send_i(const char *top, int &ex_data) // Отправка Пока�
 
 void rezistor_set(int set)
 {
+  if (set > 15)
+  {
+    set = 15;
+  }
+  else if (set < 0)
+  {
+    set = 0;
+  }
+
   if (set != set_rez_raw)
   {
     int set_raz = fabs(set - set_rez_raw);
@@ -238,6 +247,12 @@ void loop()
 
   if (termo_control.tick())
   {
+    step_up++;
+    if (step_up > 2)
+    {
+      step_up = 2;
+    }
+
     if (zal_t > 0 && Dima_t > 0)
     {
       Dima_t = Dima_t / Dima_t_tik;
@@ -252,6 +267,27 @@ void loop()
     if (Dima_t >= 232 && state_GAZ == 1 && state_DUCH == 1 && set_rez_raw < 15)
     {
       rezistor_set(set_rez_raw + 1);
+      ESP.wdtFeed();
+      delay(5000);
+      ESP.wdtFeed();
+      delay(5000);
+      ESP.wdtFeed();
+      delay(5000);
+      ESP.wdtFeed();
+      delay(5000);
+
+      while (state_GAZ == 1 && state_DUCH == 1 && set_rez_raw != 15)
+      {
+        rezistor_set(set_rez_raw + 1);
+        ESP.wdtFeed();
+        delay(5000);
+        ESP.wdtFeed();
+        delay(5000);
+        ESP.wdtFeed();
+        delay(5000);
+        ESP.wdtFeed();
+        delay(5000);
+      }
     }
     // если температура так и не поднялась делаем еще шаги в низ !!!
     if ((Dima_t <= 230 || zal_t <= 230) && set_rez_raw > 0 && state_GAZ == 0 && state_DUCH == 1)
@@ -260,9 +296,10 @@ void loop()
     }
 
     // если температура так и не поднялась а котел работает делаем еще шаги в низ !!!
-    if ((Dima_t <= 229 || zal_t <= 229) && set_rez_raw > 0 && state_GAZ == 1 && state_DUCH == 1)
+    if ((Dima_t <= 229 || zal_t <= 229) && set_rez_raw > 0 && state_GAZ == 1 && state_DUCH == 1 && step_up > 1)
     {
       rezistor_set(set_rez_raw - 1);
+      step_up = 0;
     }
     publish_send_i("kotel_rezistor", set_rez_raw);
     publish_send_i("kotel_Dima_t", Dima_t);
