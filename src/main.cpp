@@ -19,7 +19,7 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 TimerMs OTA_Wifi(10, 1, 0);
 TimerMs dallos(5000, 1, 0);
-TimerMs termo_control(15000, 1, 0);
+TimerMs termo_control(300000, 1, 0);
 TimerMs step_rezistor(300000, 1, 0);
 const char *name_client = "kotel";         // Имя клиента и сетевого порта для ОТА
 const char *mqtt_reset = "kotel_reset";    // Имя топика для перезагрузки
@@ -29,7 +29,7 @@ const char *mqtt_server = "192.168.1.221";
 String s;
 byte buff_clear, state_GAZ = 0, state_DUCH = 0, start = 0;
 int data = 0, dht_tik = 0, data_rezistor = 0;
-int Dima_t = 230, zal_t = 230, temper_ul = 0;
+int Dima_t = 0, zal_t = 0, temper_ul = 0, Dima_t_tik = 0, zal_t_tik = 0;
 int podacha, obratka, set_rez_raw = 0, podacha_kontrol;
 
 float dht_raw = 0, dht_gr = 0, dht_sr = 0;
@@ -50,7 +50,7 @@ void publish_send_i(const char *top, int &ex_data) // Отправка Пока�
 
 void rezistor_set(int set)
 {
-  if (set != set_rez_raw )
+  if (set != set_rez_raw)
   {
     int set_raz = fabs(set - set_rez_raw);
 
@@ -78,9 +78,8 @@ void rezistor_set(int set)
   if (set == 0)
   {
     my_mux.channel(0);
-    set_rez_raw=0;
+    set_rez_raw = 0;
   }
-  
 }
 
 void callback(char *topic, byte *payload, unsigned int length)
@@ -101,14 +100,16 @@ void callback(char *topic, byte *payload, unsigned int length)
     rezistor_set(data);
   }
 
-  if ((String(topic)) == "Dima_temper_gr")
+  if ((String(topic)) == "Dima_temper")
   {
-    Dima_t = data_f * 10;
+    Dima_t = Dima_t + (data_f * 10);
+    Dima_t_tik++;
   }
 
-  if ((String(topic)) == "zal_temper_gr")
+  if ((String(topic)) == "zal_temper")
   {
-    zal_t = data_f * 10;
+    zal_t = zal_t + (data_f * 10);
+    zal_t_tik++;
   }
 
   if ((String(topic)) == "temper_s_z_v")
@@ -216,8 +217,8 @@ void loop()
           client.subscribe(mqtt_reset);       // подписались на топик
                                               // client.subscribe("kotel_rezistor"); // подписались на топик
           client.subscribe("kotel_rezistor"); // подписались на топик
-          client.subscribe("Dima_temper_gr"); // подписались на топик
-          client.subscribe("zal_temper_gr");  // подписались на топик
+          client.subscribe("Dima_temper");    // подписались на топик
+          client.subscribe("zal_temper");     // подписались на топик
           client.subscribe("temper_s_z_v");   // подписались на топик
           client.subscribe(name_client);      // подписались на топик
 
@@ -237,24 +238,39 @@ void loop()
 
   if (termo_control.tick())
   {
-    if (Dima_t == 231 && zal_t >= 230) //
+    if (zal_t > 0 && Dima_t > 0)
     {
-      rezistor_set(8);
+      Dima_t = Dima_t / Dima_t_tik;
+      zal_t = zal_t / zal_t_tik;
+    }
+    else
+    {
+      Dima_t = 235;
+      zal_t = 235;
+    }
+    // если температура так и растёт !!!
+    if (Dima_t >= 232 && state_GAZ == 1 && state_DUCH == 1 && set_rez_raw < 15)
+    {
+      rezistor_set(set_rez_raw + 1);
+    }
+    // если температура так и не поднялась делаем еще шаги в низ !!!
+    if ((Dima_t <= 230 || zal_t <= 230) && set_rez_raw > 0 && state_GAZ == 0 && state_DUCH == 1)
+    {
+      rezistor_set(set_rez_raw - 1);
     }
 
-    if (step_rezistor.tick())
+    // если температура так и не поднялась а котел работает делаем еще шаги в низ !!!
+    if ((Dima_t <= 229 || zal_t <= 229) && set_rez_raw > 0 && state_GAZ == 1 && state_DUCH == 1)
     {
-      if (Dima_t >= 232 && state_GAZ == 1 && state_DUCH == 1 && set_rez_raw < 15) // если температура так и растёт !!!
-      {
-        rezistor_set(set_rez_raw + 1);
-      }
-      // если температура так и не поднялась делаем еще шаги в низ !!!
-      if ((Dima_t <= 230 || zal_t <= 230) && set_rez_raw > 0 && state_GAZ == 0 && state_DUCH == 1)
-      {
-        rezistor_set(set_rez_raw - 1);
-      }
+      rezistor_set(set_rez_raw - 1);
     }
     publish_send_i("kotel_rezistor", set_rez_raw);
+    publish_send_i("kotel_Dima_t", Dima_t);
+    publish_send_i("kotel_zal_t", zal_t);
+    zal_t = 0;
+    zal_t_tik = 0;
+    Dima_t = 0;
+    Dima_t_tik = 0;
   }
 }
 
@@ -265,7 +281,7 @@ void setup()
   client.setCallback(callback);
   ESP.wdtDisable(); // Активация watchdog
   pinMode(GAZ, INPUT);
-  pinMode(DUCH,INPUT);
+  pinMode(DUCH, INPUT);
   delay(500);
   my_mux.channel(0);
 }
