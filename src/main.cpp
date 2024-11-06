@@ -30,7 +30,7 @@ String s;
 byte buff_clear, state_GAZ = 0, state_DUCH = 0, start = 0, step_up = 0;
 int data = 0, dht_tik = 0, data_rezistor = 0;
 int Dima_t = 0, zal_t = 0, temper_ul = 0, Dima_t_tik = 0, zal_t_tik = 0;
-int podacha, obratka, set_rez_raw = 0, podacha_kontrol;
+int podacha=0, obratka=0, set_rez_raw = 0, podacha_kontrol;
 
 float dht_raw = 0, dht_gr = 0, dht_sr = 0;
 
@@ -46,6 +46,73 @@ void publish_send_i(const char *top, int &ex_data) // Отправка Пока�
   char send_mqtt[10];
   itoa(ex_data, send_mqtt, 10);
   client.publish(top, send_mqtt, 1);
+}
+
+void sensor()
+{
+  if (digitalRead(GAZ) == 1 && state_GAZ == 1)
+  {
+    client.publish("kotel_state_GAZ", "0", 1);
+    delay(1000);
+    state_GAZ = 0;
+  }
+
+  if (digitalRead(GAZ) == 0 && state_GAZ == 0)
+  {
+    client.publish("kotel_state_GAZ", "1", 1);
+    delay(1000);
+    state_GAZ = 1;
+  }
+
+  if (digitalRead(DUCH) == 1 && state_DUCH == 1)
+  {
+    client.publish("kotel_state_GVS", "1", 1);
+    delay(1000);
+    state_DUCH = 0;
+  }
+
+  if (digitalRead(DUCH) == 0 && state_DUCH == 0)
+  {
+    client.publish("kotel_state_GVS", "0", 1);
+    delay(1000);
+    state_DUCH = 1;
+  }
+}
+
+void network()
+{
+  if (OTA_Wifi.tick()) // Поддержание "WiFi" и "OTA"  и Пинок :) "watchdog" и подписка на "Топики Mqtt"
+  {
+    ArduinoOTA.handle();     // Всегда готовы к прошивке
+    client.loop();           // Проверяем сообщения и поддерживаем соедениние
+    if (!client.connected()) // Проверка на подключение к MQTT
+    {
+      while (!client.connected())
+      {
+        ESP.wdtFeed();                   // Пинок :) "watchdog"
+        if (client.connect(name_client)) // имя на сервере mqtt
+        {
+          client.subscribe(mqtt_reset);       // подписались на топик
+                                              // client.subscribe("kotel_rezistor"); // подписались на топик
+          client.subscribe("kotel_rezistor"); // подписались на топик
+          client.subscribe("Dima_temper");    // подписались на топик
+          client.subscribe("zal_temper");     // подписались на топик
+          client.subscribe("temper_s_z_v");   // подписались на топик
+          client.subscribe(name_client);      // подписались на топик
+
+          // Отправка IP в mqtt
+          char IP_ch[20];
+          String IP = (WiFi.localIP().toString().c_str());
+          IP.toCharArray(IP_ch, 20);
+          client.publish(name_client, IP_ch);
+        }
+        else
+        {
+          delay(5000);
+        }
+      }
+    }
+  }
 }
 
 void rezistor_set(int set)
@@ -71,6 +138,7 @@ void rezistor_set(int set)
         my_mux.channel(set_rez_raw);
         ESP.wdtFeed();
         delay(2000);
+        network();
       }
     }
     else
@@ -81,6 +149,7 @@ void rezistor_set(int set)
         my_mux.channel(set_rez_raw);
         ESP.wdtFeed();
         delay(2000);
+        network();
       }
     }
   }
@@ -143,35 +212,10 @@ void wi_fi_con()
 
 void loop()
 {
+  network();
   ESP.wdtFeed();
 
-  if (digitalRead(GAZ) == 1 && state_GAZ == 1)
-  {
-    client.publish("state_GAZ_kotel", "0", 1);
-    delay(1000);
-    state_GAZ = 0;
-  }
-
-  if (digitalRead(GAZ) == 0 && state_GAZ == 0)
-  {
-    client.publish("state_GAZ_kotel", "1", 1);
-    delay(1000);
-    state_GAZ = 1;
-  }
-
-  if (digitalRead(DUCH) == 1 && state_DUCH == 1)
-  {
-    client.publish("state_DUSH_kotel", "1", 1);
-    delay(1000);
-    state_DUCH = 0;
-  }
-
-  if (digitalRead(DUCH) == 0 && state_DUCH == 0)
-  {
-    client.publish("state_DUSH_kotel", "0", 1);
-    delay(1000);
-    state_DUCH = 1;
-  }
+  sensor();
 
   if (dallos.tick())
   {
@@ -212,39 +256,6 @@ void loop()
     ds.write(0x44, 1);
   }
 
-  if (OTA_Wifi.tick()) // Поддержание "WiFi" и "OTA"  и Пинок :) "watchdog" и подписка на "Топики Mqtt"
-  {
-    ArduinoOTA.handle();     // Всегда готовы к прошивке
-    client.loop();           // Проверяем сообщения и поддерживаем соедениние
-    if (!client.connected()) // Проверка на подключение к MQTT
-    {
-      while (!client.connected())
-      {
-        ESP.wdtFeed();                   // Пинок :) "watchdog"
-        if (client.connect(name_client)) // имя на сервере mqtt
-        {
-          client.subscribe(mqtt_reset);       // подписались на топик
-                                              // client.subscribe("kotel_rezistor"); // подписались на топик
-          client.subscribe("kotel_rezistor"); // подписались на топик
-          client.subscribe("Dima_temper");    // подписались на топик
-          client.subscribe("zal_temper");     // подписались на топик
-          client.subscribe("temper_s_z_v");   // подписались на топик
-          client.subscribe(name_client);      // подписались на топик
-
-          // Отправка IP в mqtt
-          char IP_ch[20];
-          String IP = (WiFi.localIP().toString().c_str());
-          IP.toCharArray(IP_ch, 20);
-          client.publish(name_client, IP_ch);
-        }
-        else
-        {
-          delay(5000);
-        }
-      }
-    }
-  }
-
   if (termo_control.tick())
   {
     step_up++;
@@ -263,33 +274,45 @@ void loop()
       Dima_t = 235;
       zal_t = 235;
     }
-    // если температура так и растёт !!!
-    if (Dima_t >= 232 && state_GAZ == 1 && state_DUCH == 1 && set_rez_raw < 15)
+
+    // если температура выше установленной делаем шаги вверх. 
+    if (Dima_t >= 231 && state_GAZ == 1 && state_DUCH == 1 && set_rez_raw < 15)
     {
       rezistor_set(set_rez_raw + 1);
       ESP.wdtFeed();
-      delay(5000);
+      delay(2000);
+      network();
       ESP.wdtFeed();
-      delay(5000);
+      delay(2000);
+      network();
       ESP.wdtFeed();
-      delay(5000);
+      delay(2000);
       ESP.wdtFeed();
-      delay(5000);
+      network();
+      delay(2000);
+      network();
+      sensor();
 
       while (state_GAZ == 1 && state_DUCH == 1 && set_rez_raw != 15)
       {
         rezistor_set(set_rez_raw + 1);
         ESP.wdtFeed();
-        delay(5000);
+        delay(2000);
         ESP.wdtFeed();
-        delay(5000);
+        network();
+        delay(2000);
         ESP.wdtFeed();
-        delay(5000);
+        network();
+        delay(2000);
         ESP.wdtFeed();
-        delay(5000);
+        network();
+        delay(2000);
+        network();
+        sensor();
       }
     }
-    // если температура так и не поднялась делаем еще шаги в низ !!!
+
+    // если температура так и не поднялась и котел не работает делаем еще шаги в низ !!!
     if ((Dima_t <= 230 || zal_t <= 230) && set_rez_raw > 0 && state_GAZ == 0 && state_DUCH == 1)
     {
       rezistor_set(set_rez_raw - 1);
@@ -301,6 +324,7 @@ void loop()
       rezistor_set(set_rez_raw - 1);
       step_up = 0;
     }
+
     publish_send_i("kotel_rezistor", set_rez_raw);
     publish_send_i("kotel_Dima_t", Dima_t);
     publish_send_i("kotel_zal_t", zal_t);
