@@ -27,10 +27,11 @@ const char *ssid = "Beeline";              // Имя точки доступа W
 const char *password = "sl908908908908sl"; // пароль точки доступа WIFI
 const char *mqtt_server = "192.168.1.221";
 String s;
-byte buff_clear, state_GAZ = 0, state_DUCH = 0, start = 0, step_up = 0;
-int data = 0, dht_tik = 0, data_rezistor = 0;
-int Dima_t = 0, zal_t = 0, temper_ul = 0, Dima_t_tik = 0, zal_t_tik = 0;
-int podacha=0, obratka=0, set_rez_raw = 0, podacha_kontrol;
+byte buff_clear, state_GAZ = 0, state_DUCH = 0, start = 0, step_up = 0, state_kotel = 0;
+int data = 0, temper_set = 230, dht_tik = 0, data_rezistor = 0, rezistor_min = 0, rezistor_max = 15;
+int Dima_t = 0, zal_t = 0, temper_ul = 0, Dima_t_tik = 0, zal_t_tik = 0, Mari_t = 0, Mari_t_tik = 0, state_mem = 0;
+;
+int podacha = 0, obratka = 0, set_rez_raw = 0, podacha_kontrol;
 
 float dht_raw = 0, dht_gr = 0, dht_sr = 0;
 
@@ -46,37 +47,6 @@ void publish_send_i(const char *top, int &ex_data) // Отправка Пока�
   char send_mqtt[10];
   itoa(ex_data, send_mqtt, 10);
   client.publish(top, send_mqtt, 1);
-}
-
-void sensor()
-{
-  if (digitalRead(GAZ) == 1 && state_GAZ == 1)
-  {
-    client.publish("kotel_state_GAZ", "0", 1);
-    delay(1000);
-    state_GAZ = 0;
-  }
-
-  if (digitalRead(GAZ) == 0 && state_GAZ == 0)
-  {
-    client.publish("kotel_state_GAZ", "1", 1);
-    delay(1000);
-    state_GAZ = 1;
-  }
-
-  if (digitalRead(DUCH) == 1 && state_DUCH == 1)
-  {
-    client.publish("kotel_state_GVS", "1", 1);
-    delay(1000);
-    state_DUCH = 0;
-  }
-
-  if (digitalRead(DUCH) == 0 && state_DUCH == 0)
-  {
-    client.publish("kotel_state_GVS", "0", 1);
-    delay(1000);
-    state_DUCH = 1;
-  }
 }
 
 void network()
@@ -98,6 +68,8 @@ void network()
           client.subscribe("Dima_temper");    // подписались на топик
           client.subscribe("zal_temper");     // подписались на топик
           client.subscribe("temper_s_z_v");   // подписались на топик
+          client.subscribe("temper_set_dom"); // подписались на топик
+          client.subscribe("Mari_temper");    // подписались на топик
           client.subscribe(name_client);      // подписались на топик
 
           // Отправка IP в mqtt
@@ -117,13 +89,13 @@ void network()
 
 void rezistor_set(int set)
 {
-  if (set > 15)
+  if (set > rezistor_max)
   {
-    set = 15;
+    set = rezistor_max;
   }
-  else if (set < 0)
+  else if (set < rezistor_min)
   {
-    set = 0;
+    set = rezistor_min;
   }
 
   if (set != set_rez_raw)
@@ -173,15 +145,23 @@ void callback(char *topic, byte *payload, unsigned int length)
   data = atoi(s.c_str());         // переводим данные в int
   float data_f = atof(s.c_str()); // переводим данные в float
 
-  if ((String(topic)) == "kotel_rezistor" && start == 0)
+  if ((String(topic)) == "kotel_rezistor")
   {
     rezistor_set(data);
   }
 
   if ((String(topic)) == "Dima_temper")
   {
-    Dima_t = Dima_t + (data_f * 10);
+    int Dima_raw = (data_f * 10);
+    Dima_t = Dima_t + Dima_raw;
     Dima_t_tik++;
+  }
+
+  if ((String(topic)) == "Mari_temper")
+  {
+    int Mari_raw = (data_f * 10);
+    Mari_t = Mari_t + Mari_raw;
+    Mari_t_tik++;
   }
 
   if ((String(topic)) == "zal_temper")
@@ -193,6 +173,104 @@ void callback(char *topic, byte *payload, unsigned int length)
   if ((String(topic)) == "temper_s_z_v")
   {
     temper_ul = data_f * 10;
+    if (temper_ul < -50)
+    {
+      rezistor_max = 14;
+    }
+    else
+    {
+      rezistor_max = 15;
+    }
+  }
+
+  if ((String(topic)) == "temper_set_dom")
+  {
+    temper_set = data_f * 10;
+  }
+}
+
+void sensor()
+{
+  if (digitalRead(GAZ) == 1 && state_GAZ == 1)
+  {
+    client.publish("kotel_state_GAZ", "0", 1);
+    delay(1000);
+    state_GAZ = 0;
+  }
+
+  if (digitalRead(GAZ) == 0 && state_GAZ == 0)
+  {
+    client.publish("kotel_state_GAZ", "1", 1);
+    delay(1000);
+    state_GAZ = 1;
+  }
+
+  if (digitalRead(DUCH) == 1 && state_DUCH == 1)
+  {
+    client.publish("kotel_state_GVS", "1", 1);
+    delay(1000);
+    state_DUCH = 0;
+  }
+
+  if (digitalRead(DUCH) == 0 && state_DUCH == 0)
+  {
+    client.publish("kotel_state_GVS", "0", 1);
+    delay(1000);
+    state_DUCH = 1;
+  }
+
+  if (state_GAZ == 0 && state_DUCH == 1)
+  {
+    state_kotel = 0;
+  }
+  else if (state_GAZ == 1 && state_DUCH == 1)
+  {
+    state_kotel = 1;
+  }
+  else if (state_GAZ == 1 && state_DUCH == 0)
+  {
+    state_kotel = 2;
+  }
+  if (state_kotel != state_mem)
+  {
+    state_mem = state_kotel;
+    publish_send_i("kotel_state", state_mem);
+  }
+}
+
+void rezistor_plus()
+{
+  rezistor_set(set_rez_raw + 1);
+  ESP.wdtFeed();
+  delay(2000);
+  network();
+  ESP.wdtFeed();
+  delay(2000);
+  network();
+  ESP.wdtFeed();
+  delay(2000);
+  ESP.wdtFeed();
+  network();
+  delay(2000);
+  network();
+  sensor();
+
+  while (state_GAZ == 1 && state_DUCH == 1 && set_rez_raw != rezistor_max)
+  {
+    rezistor_set(set_rez_raw + 1);
+    ESP.wdtFeed();
+    delay(2000);
+    ESP.wdtFeed();
+    network();
+    delay(2000);
+    ESP.wdtFeed();
+    network();
+    delay(2000);
+    ESP.wdtFeed();
+    network();
+    delay(2000);
+    network();
+    sensor();
   }
 }
 
@@ -259,79 +337,108 @@ void loop()
   if (termo_control.tick())
   {
     step_up++;
-    if (step_up > 2)
+
+    if (step_up > 5)
     {
-      step_up = 2;
+      step_up = 5;
     }
 
-    if (zal_t > 0 && Dima_t > 0)
+    if (zal_t_tik > 0)
     {
-      Dima_t = Dima_t / Dima_t_tik;
-      zal_t = zal_t / zal_t_tik;
+      zal_t = (zal_t + 15) / zal_t_tik;
+    }
+    else
+    {
+      zal_t = 235;
+    }
+
+    if (Dima_t_tik > 0)
+    {
+      Dima_t = (Dima_t + 15) / Dima_t_tik;
     }
     else
     {
       Dima_t = 235;
-      zal_t = 235;
     }
 
-    // если температура выше установленной делаем шаги вверх. 
-    if (Dima_t >= 231 && state_GAZ == 1 && state_DUCH == 1 && set_rez_raw < 15)
+    if (Mari_t_tik > 0)
     {
-      rezistor_set(set_rez_raw + 1);
-      ESP.wdtFeed();
-      delay(2000);
-      network();
-      ESP.wdtFeed();
-      delay(2000);
-      network();
-      ESP.wdtFeed();
-      delay(2000);
-      ESP.wdtFeed();
-      network();
-      delay(2000);
-      network();
-      sensor();
+      Mari_t = (Mari_t + 15) / Mari_t_tik;
+    }
+    else
+    {
+      Mari_t = 235;
+    }
 
-      while (state_GAZ == 1 && state_DUCH == 1 && set_rez_raw != 15)
+    publish_send_i("kotel_Dima_t", Dima_t);
+    publish_send_i("kotel_zal_t", zal_t);
+    publish_send_i("kotel_Mari_t", Mari_t);
+    publish_send_i("kotel_set_temper", temper_set);
+    publish_send_i("kotel_state", state_mem);
+    // если температура выше установленной делаем шаги вверх.
+    if (Dima_t >= (temper_set + 1) && zal_t >= temper_set && Mari_t >= temper_set && state_GAZ == 1 && state_DUCH == 1 && set_rez_raw < rezistor_max)
+    {
+      if (temper_ul > -50)
       {
-        rezistor_set(set_rez_raw + 1);
-        ESP.wdtFeed();
-        delay(2000);
-        ESP.wdtFeed();
-        network();
-        delay(2000);
-        ESP.wdtFeed();
-        network();
-        delay(2000);
-        ESP.wdtFeed();
-        network();
-        delay(2000);
-        network();
-        sensor();
+        rezistor_plus();
+      }
+      else if (obratka > 280)
+      {
+        rezistor_plus();
       }
     }
 
     // если температура так и не поднялась и котел не работает делаем еще шаги в низ !!!
-    if ((Dima_t <= 230 || zal_t <= 230) && set_rez_raw > 0 && state_GAZ == 0 && state_DUCH == 1)
+    if ((Dima_t <= temper_set || zal_t <= temper_set || Mari_t <= temper_set) && set_rez_raw > 0 && state_GAZ == 0 && state_DUCH == 1)
     {
-      rezistor_set(set_rez_raw - 1);
+      if (set_rez_raw > 7)
+      {
+        rezistor_set(set_rez_raw - 2);
+        step_up = 0;
+      }
+      else
+      {
+        rezistor_set(set_rez_raw - 1);
+        step_up = 0;
+      }
     }
 
     // если температура так и не поднялась а котел работает делаем еще шаги в низ !!!
-    if ((Dima_t <= 229 || zal_t <= 229) && set_rez_raw > 0 && state_GAZ == 1 && state_DUCH == 1 && step_up > 1)
+    if ((Dima_t <= (temper_set - 1) || zal_t <= (temper_set - 1) || Mari_t <= (temper_set - 1)) && set_rez_raw > 0 && state_GAZ == 1 && state_DUCH == 1 && step_up > 2)
     {
-      rezistor_set(set_rez_raw - 1);
-      step_up = 0;
+      if (set_rez_raw > 7)
+      {
+        rezistor_set(set_rez_raw - 2);
+        step_up = 0;
+      }
+      else
+      {
+        rezistor_set(set_rez_raw - 1);
+        step_up = 0;
+      }
+    }
+
+    if (obratka < 270 && temper_ul < -50 && state_GAZ == 0 && state_DUCH == 1 && (Dima_t <= (temper_set + 5) || zal_t <= (temper_set + 5) || Mari_t <= (temper_set + 5)))
+    {
+      int mem_rez = set_rez_raw; // сохраняем текущие значение
+      rezistor_set(8);           // пинаем котел чтобы стартанул
+      ESP.wdtFeed();
+      delay(2000);
+      network();
+      ESP.wdtFeed();
+      delay(2000);
+      network();
+      rezistor_set(mem_rez); // возвращаем прежние значение
     }
 
     publish_send_i("kotel_rezistor", set_rez_raw);
-    publish_send_i("kotel_Dima_t", Dima_t);
-    publish_send_i("kotel_zal_t", zal_t);
+
     zal_t = 0;
     zal_t_tik = 0;
     Dima_t = 0;
     Dima_t_tik = 0;
+    Mari_t = 0;
+    Mari_t_tik = 0;
   }
 }
 
