@@ -346,6 +346,10 @@ void loop()
     if (zal_t_tik > 0)
     {
       zal_t = (zal_t + 15) / zal_t_tik;
+      if (zal_t < 100)
+      {
+        zal_t = 235;
+      }
     }
     else
     {
@@ -355,6 +359,10 @@ void loop()
     if (Dima_t_tik > 0)
     {
       Dima_t = (Dima_t + 15) / Dima_t_tik;
+      if (Dima_t < 100)
+      {
+        Dima_t = 235;
+      }
     }
     else
     {
@@ -364,6 +372,10 @@ void loop()
     if (Mari_t_tik > 0)
     {
       Mari_t = (Mari_t + 15) / Mari_t_tik;
+      if (Mari_t < 100)
+      {
+        Mari_t = 235;
+      }
     }
     else
     {
